@@ -40,16 +40,18 @@ export default {
         if (url.pathname === "/news") {
             // ?since=1234567890  →  o timestamp'ten sonrasını ver
             // since yoksa → son 24 saat
-            const sinceParam = url.searchParams.get("since");
+            const nocache = url.searchParams.get("nocache");
             const since = sinceParam
                 ? parseInt(sinceParam)
                 : Math.floor(Date.now() / 1000) - 24 * 3600;
 
-            // KV cache kontrolü (5 dakika)
+            // KV cache kontrolü (Eğer nocache yoksa)
             const cacheKey = `news_${since}`;
-            const cached = await env.news_cache.get(cacheKey);
-            if (cached) {
-                return new Response(cached, { headers });
+            if (!nocache) {
+                const cached = await env.news_cache.get(cacheKey);
+                if (cached) {
+                    return new Response(cached, { headers });
+                }
             }
 
             const rows = await env.news_db.prepare(
@@ -66,8 +68,10 @@ export default {
                 fetched_at: Math.floor(Date.now() / 1000),
             });
 
-            // 5 dakika KV cache'e yaz
-            ctx.waitUntil(env.news_cache.put(cacheKey, result, { expirationTtl: 300 }));
+            // Sadece veri varsa 5 dakika KV cache'e yaz
+            if (rows.results.length > 0) {
+                ctx.waitUntil(env.news_cache.put(cacheKey, result, { expirationTtl: 300 }));
+            }
 
             return new Response(result, { headers });
         }
@@ -95,7 +99,10 @@ async function fetchChannel(channel, env) {
     try {
         const res = await fetch(
             `${RSSHUB_BASE}/telegram/channel/${channel}`,
-            { headers: { "User-Agent": "NewsWorker/1.0" }, cf: { cacheTtl: 300 } }
+            { 
+                headers: { "User-Agent": "NewsWorker/1.0" },
+                cf: { cacheTtl: 0, cacheKey: `${channel}-${Date.now()}` } // Her zaman taze çek
+            }
         );
         if (!res.ok) return;
 
@@ -132,7 +139,7 @@ async function fetchChannel(channel, env) {
 // ── Basit RSS XML parser ─────────────────────────────────────
 function parseRSS(xml, source) {
     const items = [];
-    const itemRegex = /<item>([\s\S]*?)<\/item>/g;
+    const itemRegex = /<item[^>]*>([\s\S]*?)<\/item>/g;
     let match;
 
     while ((match = itemRegex.exec(xml)) !== null) {
