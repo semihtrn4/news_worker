@@ -40,6 +40,7 @@ export default {
         if (url.pathname === "/news") {
             // ?since=1234567890  →  o timestamp'ten sonrasını ver
             // since yoksa → son 24 saat
+            const sinceParam = url.searchParams.get("since");
             const nocache = url.searchParams.get("nocache");
             const since = sinceParam
                 ? parseInt(sinceParam)
