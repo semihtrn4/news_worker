@@ -31,6 +31,12 @@ export default {
             return new Response(null, { headers });
         }
 
+        // Manuel tetikleme: /trigger
+        if (url.pathname === "/trigger") {
+            ctx.waitUntil(fetchAllChannels(env));
+            return new Response(JSON.stringify({ status: "fetch started", channels: CHANNELS.length }), { headers });
+        }
+
         if (url.pathname === "/news") {
             // ?since=1234567890  →  o timestamp'ten sonrasını ver
             // since yoksa → son 24 saat
